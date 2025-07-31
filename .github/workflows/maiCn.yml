@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Download latest ngrok (v3)
+        run: Invoke-WebRequest https://bin.equinox.io/a/7gYbFh7dzwC/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+
+      - name: Remove old ngrok.exe if exists
+        run: Remove-Item -Path .\ngrok.exe -Force -ErrorAction Ignore
+
+      - name: Extract ngrok
+        run: Expand-Archive ngrok.zip -DestinationPath . -Force
+
+      - name: Check ngrok version
+        run: .\ngrok.exe version
+
+      - name: Authenticate with ngrok
+        run: .\ngrok.exe config add-authtoken $Env:NGROK_AUTH_TOKEN
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Enable Remote Desktop and set password
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          net user runneradmin P@ssw0rd!
+
+      - name: Start ngrok tunnel
+        run: .\ngrok.exe tcp 3389
