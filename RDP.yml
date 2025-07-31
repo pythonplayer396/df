@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Download Ngrok v3 (Windows 64-bit)
+        run: Invoke-WebRequest https://ngrok-agent.s3.amazonaws.com/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+
+      - name: Extract Ngrok
+        run: Expand-Archive ngrok.zip -DestinationPath .
+
+      - name: Authenticate Ngrok
+        run: .\ngrok.exe config add-authtoken $Env:NGROK_AUTH_TOKEN
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Enable RDP and set password
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          net user runneradmin P@ssw0rd!
+
+      - name: Start Ngrok tunnel to RDP
+        run: |
+          Start-Process .\ngrok.exe -ArgumentList "start --none"
+          Start-Sleep -Seconds 5
+          Start-Process .\ngrok.exe -ArgumentList "tunnel --label edge=rdp --proto tcp --addr 3389"
+
+      - name: Show RDP public address
+        run: |
+          Start-Sleep -Seconds 15
+          $response = Invoke-WebRequest http://127.0.0.1:4040/api/tunnels
+          $json = $response.Content | ConvertFrom-Json
+          Write-Output "`nRDP Address: $($json.tunnels[0].public_url)`n"
